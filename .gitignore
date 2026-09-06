@@ -1,0 +1,44 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+out/
+tmp/
+
+# Minecraft / Forge runtime
+run/
+run-data/
+logs/
+crash-reports/
+*.log
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+.metadata/
+bin/
+*.launch
+eclipse/
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Java
+hs_err_pid*
+replay_pid*
+
+# Generated / temp
+*.tmp
+*.swp
+*~
+forge*changelog.txt
+accesstransform.log
+mcmodsrepo/
