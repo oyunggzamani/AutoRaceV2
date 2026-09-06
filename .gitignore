@@ -42,3 +42,7 @@ replay_pid*
 forge*changelog.txt
 accesstransform.log
 mcmodsrepo/
+
+# Local Immersive Vehicles / R.A.G.E development JARs (never commit)
+dev-libs/
+**/dev-libs/

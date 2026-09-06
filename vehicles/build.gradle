@@ -1,0 +1,156 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = 'AutoRaceV2-Vehicles'
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}"
+
+def ivLibsDir = autoracev2_iv_libs?.trim()
+        ? file(autoracev2_iv_libs)
+        : file("${System.getProperty('user.home')}/.autoracev2-dev-libs")
+
+minecraft {
+    mappings channel: mapping_channel, version: mapping_version
+    copyIdeResources = true
+
+    runs {
+        configureEach {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', "${layout.buildDirectory.get()}/createSrgToMcp/output.srg"
+            property 'autoracev2.vehicles.runtimeTest', project.findProperty('autoracev2.vehicles.runtimeTest') ?: 'false'
+            mods {
+                "${mod_id}" {
+                    source sourceSets.main
+                }
+            }
+        }
+
+        client {
+            property 'forge.enabledGameTestNamespaces', mod_id
+            if (project.findProperty('autoracev2.vehicles.runtimeTest') == 'true') {
+                args '--quickPlaySingleplayer', 'AutoRaceTest'
+            }
+        }
+
+        server {
+            property 'forge.enabledGameTestNamespaces', mod_id
+            args '--nogui'
+        }
+
+        gameTestServer {
+            property 'forge.enabledGameTestNamespaces', mod_id
+        }
+
+        data {
+            workingDirectory project.file('run-data')
+            args '--mod', mod_id, '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
+        }
+    }
+}
+
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+repositories {
+    mavenCentral()
+    flatDir {
+        dirs layout.projectDirectory.dir('dev-libs')
+    }
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+    // Local IV / pack JARs stay gitignored. flatDir + fg.deobf remaps mixin targets for official mappings.
+    def ivMapped = file('dev-libs/immersivevehicles-1.20.1-24.0.0.jar')
+    if (ivMapped.exists()) {
+        implementation fg.deobf('local:immersivevehicles:1.20.1-24.0.0')
+        logger.lifecycle("AutoRaceV2 Vehicles deobf runtime dep: ${ivMapped.name}")
+    }
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.10.2'
+}
+
+tasks.register('prepareDevMods', Copy) {
+    group = 'autoracev2'
+    description = 'Copy R.A.G.E / Official Pack JARs into run/mods so IV PackParser can see them.'
+    from ivLibsDir
+    into layout.projectDirectory.dir('run/mods')
+    include 'MTS Official Pack-1.20.1-V29.jar', 'R.A.G.E-V2.3_1.20.1.jar'
+    onlyIf { ivLibsDir.exists() }
+}
+
+tasks.whenTaskAdded { task ->
+    if (task.name == 'runClient' || task.name == 'runServer') {
+        task.dependsOn 'createSrgToMcp', 'prepareDevMods'
+    }
+}
+
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [
+            minecraft_version: minecraft_version, minecraft_version_range: minecraft_version_range,
+            forge_version: forge_version, forge_version_range: forge_version_range,
+            loader_version_range: loader_version_range,
+            mod_id: mod_id, mod_name: mod_name, mod_license: mod_license, mod_version: mod_version,
+            mod_authors: mod_authors, mod_description: mod_description,
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand replaceProperties + [project: project]
+    }
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        showStandardStreams = true
+        exceptionFormat = 'full'
+    }
+}
+
+tasks.named('jar', Jar).configure {
+    dependsOn test
+    manifest {
+        attributes([
+                'Specification-Title'     : mod_id,
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : '1',
+                'Implementation-Title'    : project.name,
+                'Implementation-Version'  : project.jar.archiveVersion,
+                'Implementation-Vendor'   : mod_authors,
+                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ")
+        ])
+    }
+    finalizedBy 'reobfJar'
+}
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            artifact jar
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/mcmodsrepo"
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
