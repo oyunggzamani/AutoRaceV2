@@ -94,16 +94,7 @@ public final class VehicleCommands {
                             CommandSupport.info(source, "  " + tier, ChatFormatting.WHITE));
                     return 1;
                 })
-                .orElseGet(() -> {
-                    if (AutoRaceV2VehiclesApi.getMappedVehicleForOwner(ownerName).isPresent()) {
-                        return CommandSupport.fail(
-                                source,
-                                "Live IV entity not found for " + ownerName
-                                        + ". Mapping is stale; spawn coordinates are not current position."
-                        );
-                    }
-                    return CommandSupport.fail(source, "Unknown owner: " + ownerName);
-                });
+                .orElseGet(() -> CommandSupport.fail(source, "Unknown owner: " + ownerName));
     }
 
     private static int list(CommandSourceStack source) {

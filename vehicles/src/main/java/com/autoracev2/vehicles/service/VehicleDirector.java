@@ -20,7 +20,7 @@ import java.util.Optional;
  * Immersive Vehicles cannot swap two entities in one atomic world operation.
  * Sequence used here:
  * <ol>
- *   <li>Read the current live IV entity pose (never the original spawn snapshot).</li>
+ *   <li>Read the current pose (and later, momentum).</li>
  *   <li>Spawn the replacement first. The old vehicle stays in the world.</li>
  *   <li>If spawn fails, the owner map is unchanged.</li>
  *   <li>If spawn succeeds, the owner map is replaced in one put, then the old
@@ -41,30 +41,15 @@ public final class VehicleDirector {
     }
 
     public Optional<VehicleRecord> getVehicleForOwner(OwnerRef owner) {
-        return withLivePose(map.get(owner));
-    }
-
-    public Optional<VehicleRecord> getVehicleForOwner(String username) {
-        return withLivePose(map.get(username));
-    }
-
-    /**
-     * Owner mapping only. Pose on this record is the last spawn/swap snapshot, not live IV state.
-     */
-    public Optional<VehicleRecord> getMappedVehicleForOwner(OwnerRef owner) {
         return map.get(owner);
     }
 
-    public Optional<VehicleRecord> getMappedVehicleForOwner(String username) {
+    public Optional<VehicleRecord> getVehicleForOwner(String username) {
         return map.get(username);
     }
 
     public List<VehicleRecord> getAllActiveVehicles() {
-        List<VehicleRecord> live = new ArrayList<>();
-        for (VehicleRecord record : map.all()) {
-            withLivePose(Optional.of(record)).ifPresent(live::add);
-        }
-        return List.copyOf(live);
+        return map.all();
     }
 
     public Optional<TierDefinition> getTierDefinition(int tierId) {
@@ -104,22 +89,8 @@ public final class VehicleDirector {
         if (tier.isEmpty()) {
             return VehicleResult.fail("Invalid tier: " + tierId);
         }
-        VehicleRecord mapped = current.get();
-        Optional<VehiclePose> livePose = runtime.readLivePose(mapped.ivUniqueId());
-        if (livePose.isEmpty()) {
-            return VehicleResult.fail(
-                    "Live vehicle entity not found for " + owner.username()
-                            + ". Swap aborted to avoid using stale spawn coordinates."
-            );
-        }
-        return replacePrepared(owner, mapped, tier.get(), livePose.get());
-    }
-
-    /**
-     * Moves the live IV entity. Used by automated runtime verification, not by player commands.
-     */
-    public boolean relocateLiveVehicle(String ivUniqueId, VehiclePose pose) {
-        return runtime.relocate(ivUniqueId, pose);
+        VehicleRecord live = current.get();
+        return replacePrepared(owner, live, tier.get(), live.pose());
     }
 
     public VehicleResult despawnVehicle(OwnerRef owner) {
@@ -152,14 +123,6 @@ public final class VehicleDirector {
             return Optional.empty();
         }
         return tiers.byId(tierId);
-    }
-
-    private Optional<VehicleRecord> withLivePose(Optional<VehicleRecord> mapped) {
-        if (mapped.isEmpty()) {
-            return Optional.empty();
-        }
-        VehicleRecord record = mapped.get();
-        return runtime.readLivePose(record.ivUniqueId()).map(record::withPose);
     }
 
     private VehicleResult spawnFresh(OwnerRef owner, TierDefinition tier, VehiclePose pose) {

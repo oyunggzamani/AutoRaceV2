@@ -15,19 +15,6 @@ public interface VehicleRuntime {
 
     boolean despawn(String ivUniqueId);
 
-    /**
-     * Current live IV pose for {@code uniqueUUID}. Empty when the entity is gone or invalid.
-     * Spawn coordinates must not be used as a substitute.
-     */
-    Optional<VehiclePose> readLivePose(String ivUniqueId);
-
-    /**
-     * Test/runtime-verification helper: move the live IV entity. Production commands never call this.
-     */
-    default boolean relocate(String ivUniqueId, VehiclePose pose) {
-        return false;
-    }
-
     default VehicleMomentum captureMomentum(String ivUniqueId) {
         return VehicleMomentum.NONE;
     }
