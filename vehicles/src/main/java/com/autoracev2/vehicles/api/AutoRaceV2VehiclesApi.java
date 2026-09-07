@@ -38,6 +38,13 @@ public final class AutoRaceV2VehiclesApi {
         return director == null ? Optional.empty() : director.getVehicleForOwner(username);
     }
 
+    /**
+     * Owner mapping without live IV pose overlay. Used to distinguish unknown owner vs stale entity.
+     */
+    public static Optional<VehicleRecord> getMappedVehicleForOwner(String username) {
+        return director == null ? Optional.empty() : director.getMappedVehicleForOwner(username);
+    }
+
     public static List<VehicleRecord> getAllActiveVehicles() {
         return director == null ? List.of() : director.getAllActiveVehicles();
     }

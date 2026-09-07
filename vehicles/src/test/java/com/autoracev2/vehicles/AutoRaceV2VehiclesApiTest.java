@@ -38,6 +38,7 @@ class AutoRaceV2VehiclesApiTest {
                 new VehiclePose("minecraft:overworld", 0, 64, 0, 0, 0)
         ).success());
         assertEquals(1, AutoRaceV2VehiclesApi.getVehicleForOwner("Ali").orElseThrow().tierId());
+        assertEquals(0.0D, AutoRaceV2VehiclesApi.getVehicleForOwner("Ali").orElseThrow().pose().x());
         assertTrue(AutoRaceV2VehiclesApi.swapVehicleTier(OwnerRef.named("Ali"), 2).success());
         assertEquals(2, AutoRaceV2VehiclesApi.getVehicleForOwner("Ali").orElseThrow().tierId());
         assertTrue(AutoRaceV2VehiclesApi.despawnAllVehicles().success());

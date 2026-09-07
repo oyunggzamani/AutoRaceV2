@@ -170,6 +170,141 @@ public final class ImmersiveVehiclesRuntime implements VehicleRuntime {
         return true;
     }
 
+    @Override
+    public Optional<VehiclePose> readLivePose(String ivUniqueId) {
+        return findLiveIvVehicle(ivUniqueId).flatMap(this::poseOfLiveEntity);
+    }
+
+    @Override
+    public boolean relocate(String ivUniqueId, VehiclePose pose) {
+        if (pose == null) {
+            return false;
+        }
+        Optional<Object> live = findLiveIvVehicle(ivUniqueId);
+        if (live.isEmpty()) {
+            return false;
+        }
+        try {
+            applyPose(live.get(), pose);
+            return true;
+        } catch (ReflectiveOperationException exception) {
+            AutoRaceV2Vehicles.LOGGER.warn("Failed to relocate live IV entity {}.", ivUniqueId, exception);
+            return false;
+        }
+    }
+
+    /**
+     * Resolves the live IV vehicle by AutoRaceV2-mapped {@code uniqueUUID}.
+     * Official lookup is {@code AWrapperWorld.getEntity(UUID)}; BuilderEntityExisting is fallback only.
+     */
+    private Optional<Object> findLiveIvVehicle(String ivUniqueId) {
+        MinecraftServer minecraft = server.get();
+        if (minecraft == null || ivUniqueId == null || ivUniqueId.isBlank()) {
+            return Optional.empty();
+        }
+        UUID wanted;
+        try {
+            wanted = UUID.fromString(ivUniqueId.trim());
+        } catch (IllegalArgumentException ignored) {
+            return Optional.empty();
+        }
+        try {
+            Class<?> vehicleClass = Class.forName(VEHICLE_CLASS);
+            for (ServerLevel level : minecraft.getAllLevels()) {
+                Object world = wrapperWorld(level);
+                if (world == null || (boolean) world.getClass().getMethod("isClient").invoke(world)) {
+                    continue;
+                }
+                Object entity = world.getClass().getMethod("getEntity", UUID.class).invoke(world, wanted);
+                if (isLiveVehicle(entity, vehicleClass)) {
+                    return Optional.of(entity);
+                }
+            }
+            Class<?> builderClass = Class.forName(BUILDER_ENTITY);
+            Field entityField = declaredField(builderClass, "entity");
+            for (ServerLevel level : minecraft.getAllLevels()) {
+                List<Entity> snapshot = new ArrayList<>();
+                level.getEntities().getAll().forEach(snapshot::add);
+                for (Entity entity : snapshot) {
+                    if (!builderClass.isInstance(entity)) {
+                        continue;
+                    }
+                    Object iv = entityField.get(entity);
+                    if (!isLiveVehicle(iv, vehicleClass)) {
+                        continue;
+                    }
+                    Object unique = fieldValue(iv, "uniqueUUID");
+                    if (unique instanceof UUID uuid && wanted.equals(uuid)) {
+                        return Optional.of(iv);
+                    }
+                }
+            }
+        } catch (ClassNotFoundException ignored) {
+            return Optional.empty();
+        } catch (ReflectiveOperationException exception) {
+            AutoRaceV2Vehicles.LOGGER.warn("Live IV lookup failed for {}.", ivUniqueId, exception);
+            return Optional.empty();
+        }
+        return Optional.empty();
+    }
+
+    private Optional<VehiclePose> poseOfLiveEntity(Object vehicle) {
+        try {
+            if (!readBoolean(vehicle, "isValid")) {
+                return Optional.empty();
+            }
+            Object world = fieldValue(vehicle, "world");
+            Object position = fieldValue(vehicle, "position");
+            Object orientation = fieldValue(vehicle, "orientation");
+            if (world == null || position == null || orientation == null) {
+                return Optional.empty();
+            }
+            String dimension = liveDimension(world);
+            if (dimension == null || dimension.isBlank()) {
+                return Optional.empty();
+            }
+            double x = ((Number) fieldValue(position, "x")).doubleValue();
+            double y = ((Number) fieldValue(position, "y")).doubleValue();
+            double z = ((Number) fieldValue(position, "z")).doubleValue();
+            Object angles = fieldValue(orientation, "angles");
+            if (angles == null) {
+                return Optional.empty();
+            }
+            // WrapperEntity: IV pitch = mcPitch, IV yaw = -mcYaw.
+            float pitch = ((Number) fieldValue(angles, "x")).floatValue();
+            float yaw = (float) -((Number) fieldValue(angles, "y")).doubleValue();
+            return Optional.of(new VehiclePose(dimension, x, y, z, yaw, pitch));
+        } catch (ReflectiveOperationException exception) {
+            AutoRaceV2Vehicles.LOGGER.warn("Failed to read live IV pose.", exception);
+            return Optional.empty();
+        }
+    }
+
+    private boolean isLiveVehicle(Object entity, Class<?> vehicleClass) throws ReflectiveOperationException {
+        return entity != null && vehicleClass.isInstance(entity) && readBoolean(entity, "isValid");
+    }
+
+    /**
+     * IV {@code WrapperWorld.getName()} is {@code Level.dimension().location().getPath()}
+     * (e.g. {@code overworld}). Spawn/swap need the full key {@code minecraft:overworld},
+     * so we read the live wrapper's MC {@code Level} when present.
+     */
+    private static String liveDimension(Object ivWorld) throws ReflectiveOperationException {
+        try {
+            Object mcLevel = declaredField(ivWorld.getClass(), "world").get(ivWorld);
+            if (mcLevel instanceof Level level) {
+                return level.dimension().location().toString();
+            }
+        } catch (NoSuchFieldException ignored) {
+            // Fall through to getName() and normalize.
+        }
+        String name = (String) ivWorld.getClass().getMethod("getName").invoke(ivWorld);
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        return name.contains(":") ? name : "minecraft:" + name;
+    }
+
     private Object resolveVehicleItem(TierDefinition tier) throws ReflectiveOperationException {
         Class<?> parser = Class.forName(PACK_PARSER);
         Class<?> itemVehicle = Class.forName(ITEM_VEHICLE);
